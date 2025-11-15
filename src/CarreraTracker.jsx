@@ -47,6 +47,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
 const db = getFirestore(app);
+const TU_USER_ID_FIJO = "GeQyTcbhkZSjyX1aw2rjoZ06UoR2";
 
 
 
@@ -176,41 +177,18 @@ export default function CarreraTracker() {
 
 
 
+    // 3. AGREGA ESTE NUEVO BLOQUE EN SU LUGAR:
     useEffect(() => {
+        // Forzamos a la app a usar tu ID fijo
+        setUsuario({ uid: TU_USER_ID_FIJO });
 
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        // Cargamos los datos de ESE ID
+        cargarDatosUsuario(TU_USER_ID_FIJO);
 
-            if (user) {
+        // Marcamos que la app ya no está "cargando"
+        setCargando(false);
 
-                setUsuario(user);
-
-                await cargarDatosUsuario(user.uid);
-
-            } else {
-
-                try {
-
-                    const result = await signInAnonymously(auth);
-
-                    setUsuario(result.user);
-
-                } catch (error) {
-
-                    console.error('Error en autenticación:', error);
-
-                }
-
-            }
-
-            setCargando(false);
-
-        });
-
-
-
-        return () => unsubscribe();
-
-    }, []);
+    }, []); // El array vacío [] hace que se ejecute solo una vez.
 
 
 
