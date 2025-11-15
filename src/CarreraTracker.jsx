@@ -23,6 +23,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+auth.tenantId = null; // Agrega esta línea
+const COLECCION_PRINCIPAL = "datos_carrera";
+// FORZAR UID FIJO PARA USUARIOS ANÓNIMOS
+const UID_FIJO = "GeQyTcbhkZSjyX1aw2rjoZ06UoR2";
+
 
 const ESTADOS = {
     NO_CURSADA: 'No Cursada',
@@ -70,7 +75,6 @@ export default function CarreraTracker() {
     const [pestanaActiva, setPestanaActiva] = useState('materias');
     const [materias, setMaterias] = useState([]);
     const [planExamenes, setPlanExamenes] = useState([]);
-    const [parcialesProgramados, setParcialesProgramados] = useState([]);
     const [recordatorios, setRecordatorios] = useState([]);
     const [metas, setMetas] = useState([]);
     const [editando, setEditando] = useState(null);
@@ -84,65 +88,63 @@ export default function CarreraTracker() {
         notasParciales: []
     });
     const [mostrandoFormulario, setMostrandoFormulario] = useState(false);
-    const [usuario, setUsuario] = useState(null);
     const [cargando, setCargando] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                setUsuario(user);
-                await cargarDatosUsuario(user.uid);
-            } else {
-                try {
-                    const result = await signInAnonymously(auth);
-                    setUsuario(result.user);
-                } catch (error) {
-                    console.error('Error en autenticación:', error);
-                }
-            }
-            setCargando(false);
-        });
-
-        return () => unsubscribe();
+        cargarDatos();
     }, []);
 
-    const cargarDatosUsuario = async (userId) => {
+    const cargarDatos = async () => {
         try {
-            const materiasRef = collection(db, 'users', userId, 'materias');
-            const unsubscribeMaterias = onSnapshot(materiasRef, (snapshot) => {
-                const materiasData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setMaterias(materiasData);
-            });
+            // Cargar materias
+            const unsubscribeMaterias = onSnapshot(
+                collection(db, COLECCION_PRINCIPAL, 'principal', 'materias'),
+                (snapshot) => {
+                    const materiasData = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    setMaterias(materiasData);
+                }
+            );
 
-            const examenesRef = collection(db, 'users', userId, 'examenes');
-            const unsubscribeExamenes = onSnapshot(examenesRef, (snapshot) => {
-                const examenesData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setPlanExamenes(examenesData);
-            });
+            // Cargar exámenes
+            const unsubscribeExamenes = onSnapshot(
+                collection(db, COLECCION_PRINCIPAL, 'principal', 'examenes'),
+                (snapshot) => {
+                    const examenesData = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    setPlanExamenes(examenesData);
+                }
+            );
 
-            const recordatoriosRef = collection(db, 'users', userId, 'recordatorios');
-            const unsubscribeRecordatorios = onSnapshot(recordatoriosRef, (snapshot) => {
-                const recordatoriosData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setRecordatorios(recordatoriosData);
-            });
+            // Cargar recordatorios
+            const unsubscribeRecordatorios = onSnapshot(
+                collection(db, COLECCION_PRINCIPAL, 'principal', 'recordatorios'),
+                (snapshot) => {
+                    const recordatoriosData = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    setRecordatorios(recordatoriosData);
+                }
+            );
 
-            const metasRef = collection(db, 'users', userId, 'metas');
-            const unsubscribeMetas = onSnapshot(metasRef, (snapshot) => {
-                const metasData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setMetas(metasData);
-            });
+            // Cargar metas
+            const unsubscribeMetas = onSnapshot(
+                collection(db, COLECCION_PRINCIPAL, 'principal', 'metas'),
+                (snapshot) => {
+                    const metasData = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    setMetas(metasData);
+                }
+            );
+
+            setCargando(false);
 
             return () => {
                 unsubscribeMaterias();
@@ -152,12 +154,14 @@ export default function CarreraTracker() {
             };
         } catch (error) {
             console.error('Error cargando datos:', error);
+            setCargando(false);
         }
     };
 
-    // 🔄 FUNCIONES EXISTENTES (las mismas que antes)
+    // 🔄 MODIFICAR TODAS LAS FUNCIONES DE FIREBASE
+
     const agregarMateria = async () => {
-        if (nuevaMateria.nombre.trim() && usuario) {
+        if (nuevaMateria.nombre.trim()) {
             const nuevaMateriaConId = {
                 ...nuevaMateria,
                 id: Date.now().toString(),
@@ -165,7 +169,10 @@ export default function CarreraTracker() {
             };
 
             try {
-                await setDoc(doc(db, 'users', usuario.uid, 'materias', nuevaMateriaConId.id), nuevaMateriaConId);
+                await setDoc(
+                    doc(db, COLECCION_PRINCIPAL, 'principal', 'materias', nuevaMateriaConId.id),
+                    nuevaMateriaConId
+                );
 
                 setNuevaMateria({
                     nombre: '',
@@ -184,212 +191,135 @@ export default function CarreraTracker() {
     };
 
     const actualizarMateria = async (id, cambios) => {
-        if (usuario) {
-            try {
-                await setDoc(doc(db, 'users', usuario.uid, 'materias', id),
-                    { ...cambios },
-                    { merge: true }
-                );
-            } catch (error) {
-                console.error('Error actualizando materia:', error);
-            }
+        try {
+            await setDoc(
+                doc(db, COLECCION_PRINCIPAL, 'principal', 'materias', id),
+                { ...cambios },
+                { merge: true }
+            );
+        } catch (error) {
+            console.error('Error actualizando materia:', error);
         }
     };
 
     const eliminarMateria = async (id) => {
-        if (usuario) {
-            try {
-                await deleteDoc(doc(db, 'users', usuario.uid, 'materias', id));
+        try {
+            await deleteDoc(doc(db, COLECCION_PRINCIPAL, 'principal', 'materias', id));
 
-                const materiasConCorrelativas = materias.filter(m => m.correlativas.includes(id));
-                for (const materia of materiasConCorrelativas) {
-                    await actualizarMateria(materia.id, {
-                        correlativas: materia.correlativas.filter(c => c !== id)
-                    });
-                }
-
-                const examenesAEliminar = planExamenes.filter(p => p.materiaId === id);
-                for (const examen of examenesAEliminar) {
-                    await deleteDoc(doc(db, 'users', usuario.uid, 'examenes', examen.id));
-                }
-            } catch (error) {
-                console.error('Error eliminando materia:', error);
+            // Eliminar correlativas y exámenes relacionados
+            const materiasConCorrelativas = materias.filter(m => m.correlativas.includes(id));
+            for (const materia of materiasConCorrelativas) {
+                await actualizarMateria(materia.id, {
+                    correlativas: materia.correlativas.filter(c => c !== id)
+                });
             }
+
+            const examenesAEliminar = planExamenes.filter(p => p.materiaId === id);
+            for (const examen of examenesAEliminar) {
+                await deleteDoc(doc(db, COLECCION_PRINCIPAL, 'principal', 'examenes', examen.id));
+            }
+        } catch (error) {
+            console.error('Error eliminando materia:', error);
         }
-    };
-    const puedeCursar = (materia) => {
-        if (materia.estado !== ESTADOS.NO_CURSADA) return false;
-        if (materia.correlativas.length === 0) return true;
-
-        return materia.correlativas.every(corrId => {
-            const correlativa = materias.find(m => m.id === corrId);
-            return correlativa && (correlativa.estado === ESTADOS.REGULAR || correlativa.estado === ESTADOS.PROMOCION);
-        });
-    };
-    const agregarNotaParcial = async (materiaId, nota) => {
-        if (usuario && nota >= 0 && nota <= 10) {
-            const materia = materias.find(m => m.id === materiaId);
-            const nuevasNotas = [...(materia.notasParciales || []), {
-                nota,
-                fecha: new Date().toISOString(),
-                id: Date.now().toString()
-            }];
-
-            await actualizarMateria(materiaId, {
-                notasParciales: nuevasNotas,
-                estado: ESTADOS.CURSANDO
-            });
-        }
-    };
-
-    const calcularPromedioMateria = (materia) => {
-        if (!materia.notasParciales || materia.notasParciales.length === 0) return null;
-        const suma = materia.notasParciales.reduce((acc, curr) => acc + curr.nota, 0);
-        return (suma / materia.notasParciales.length).toFixed(2);
-    };
-
-    const calcularPromedioGeneral = () => {
-        const materiasConNota = materias.filter(m => m.notaFinal !== null && m.notaFinal !== undefined);
-        if (materiasConNota.length === 0) return null;
-
-        const suma = materiasConNota.reduce((acc, materia) => acc + materia.notaFinal, 0);
-        return (suma / materiasConNota.length).toFixed(2);
-    };
-
-    const getEstadisticas = () => {
-        const total = materias.length;
-        const promocionadas = materias.filter(m => m.estado === ESTADOS.PROMOCION).length;
-        const regulares = materias.filter(m => m.estado === ESTADOS.REGULAR).length;
-        const cursando = materias.filter(m => m.estado === ESTADOS.CURSANDO).length;
-        const libres = materias.filter(m => m.estado === ESTADOS.LIBRE).length;
-        const noCursadas = materias.filter(m => m.estado === ESTADOS.NO_CURSADA).length;
-        const disponibles = materias.filter(m => puedeCursar(m)).length;
-
-        const porcentajeCompletado = total > 0 ? ((promocionadas + regulares) / total * 100).toFixed(1) : 0;
-        const promedioGeneral = calcularPromedioGeneral();
-
-        return {
-            total,
-            promocionadas,
-            regulares,
-            cursando,
-            libres,
-            noCursadas,
-            disponibles,
-            porcentajeCompletado,
-            promedioGeneral
-        };
     };
 
     const agregarExamen = async (materiaId, mesa) => {
-        if (usuario) {
-            const yaAgregado = planExamenes.find(p => p.materiaId === materiaId && p.mesa === mesa);
-            if (!yaAgregado) {
-                const nuevoExamen = {
-                    id: Date.now().toString(),
-                    materiaId,
-                    mesa,
-                    fechaMesa: FECHAS_MESAS[mesa]
-                };
+        const yaAgregado = planExamenes.find(p => p.materiaId === materiaId && p.mesa === mesa);
+        if (!yaAgregado) {
+            const nuevoExamen = {
+                id: Date.now().toString(),
+                materiaId,
+                mesa,
+                fechaMesa: FECHAS_MESAS[mesa]
+            };
 
-                try {
-                    await setDoc(doc(db, 'users', usuario.uid, 'examenes', nuevoExamen.id), nuevoExamen);
-                } catch (error) {
-                    console.error('Error agregando examen:', error);
-                }
+            try {
+                await setDoc(
+                    doc(db, COLECCION_PRINCIPAL, 'principal', 'examenes', nuevoExamen.id),
+                    nuevoExamen
+                );
+            } catch (error) {
+                console.error('Error agregando examen:', error);
             }
         }
     };
 
     const eliminarExamen = async (id) => {
-        if (usuario) {
-            try {
-                await deleteDoc(doc(db, 'users', usuario.uid, 'examenes', id));
-            } catch (error) {
-                console.error('Error eliminando examen:', error);
-            }
+        try {
+            await deleteDoc(doc(db, COLECCION_PRINCIPAL, 'principal', 'examenes', id));
+        } catch (error) {
+            console.error('Error eliminando examen:', error);
         }
     };
 
-    const marcarComoPromovida = async (materiaId, examenId, nota = null) => {
-        await actualizarMateria(materiaId, {
-            estado: ESTADOS.PROMOCION,
-            notaFinal: nota
-        });
-        await eliminarExamen(examenId);
-    };
-
-    // 🎯 NUEVAS FUNCIONALIDADES - RECORDATORIOS Y METAS
+    // Hacer lo mismo para recordatorios y metas...
     const agregarRecordatorio = async (recordatorio) => {
-        if (usuario) {
-            const nuevoRecordatorio = {
-                id: Date.now().toString(),
-                ...recordatorio,
-                completado: false,
-                fechaCreacion: new Date().toISOString()
-            };
+        const nuevoRecordatorio = {
+            id: Date.now().toString(),
+            ...recordatorio,
+            completado: false,
+            fechaCreacion: new Date().toISOString()
+        };
 
-            try {
-                await setDoc(doc(db, 'users', usuario.uid, 'recordatorios', nuevoRecordatorio.id), nuevoRecordatorio);
-            } catch (error) {
-                console.error('Error agregando recordatorio:', error);
-            }
+        try {
+            await setDoc(
+                doc(db, COLECCION_PRINCIPAL, 'principal', 'recordatorios', nuevoRecordatorio.id),
+                nuevoRecordatorio
+            );
+        } catch (error) {
+            console.error('Error agregando recordatorio:', error);
         }
     };
 
     const eliminarRecordatorio = async (id) => {
-        if (usuario) {
-            try {
-                await deleteDoc(doc(db, 'users', usuario.uid, 'recordatorios', id));
-            } catch (error) {
-                console.error('Error eliminando recordatorio:', error);
-            }
+        try {
+            await deleteDoc(doc(db, COLECCION_PRINCIPAL, 'principal', 'recordatorios', id));
+        } catch (error) {
+            console.error('Error eliminando recordatorio:', error);
         }
     };
 
     const toggleRecordatorioCompletado = async (id, completado) => {
-        if (usuario) {
-            try {
-                await setDoc(doc(db, 'users', usuario.uid, 'recordatorios', id),
-                    { completado },
-                    { merge: true }
-                );
-            } catch (error) {
-                console.error('Error actualizando recordatorio:', error);
-            }
+        try {
+            await setDoc(
+                doc(db, COLECCION_PRINCIPAL, 'principal', 'recordatorios', id),
+                { completado },
+                { merge: true }
+            );
+        } catch (error) {
+            console.error('Error actualizando recordatorio:', error);
         }
     };
 
     const agregarMeta = async (meta) => {
-        if (usuario) {
-            const nuevaMeta = {
-                id: Date.now().toString(),
-                ...meta,
-                completada: false,
-                fechaCreacion: new Date().toISOString()
-            };
+        const nuevaMeta = {
+            id: Date.now().toString(),
+            ...meta,
+            completada: false,
+            fechaCreacion: new Date().toISOString()
+        };
 
-            try {
-                await setDoc(doc(db, 'users', usuario.uid, 'metas', nuevaMeta.id), nuevaMeta);
-            } catch (error) {
-                console.error('Error agregando meta:', error);
-            }
+        try {
+            await setDoc(
+                doc(db, COLECCION_PRINCIPAL, 'principal', 'metas', nuevaMeta.id),
+                nuevaMeta
+            );
+        } catch (error) {
+            console.error('Error agregando meta:', error);
         }
     };
 
     const toggleMetaCompletada = async (id, completada) => {
-        if (usuario) {
-            try {
-                await setDoc(doc(db, 'users', usuario.uid, 'metas', id),
-                    { completada },
-                    { merge: true }
-                );
-            } catch (error) {
-                console.error('Error actualizando meta:', error);
-            }
+        try {
+            await setDoc(
+                doc(db, COLECCION_PRINCIPAL, 'principal', 'metas', id),
+                { completada },
+                { merge: true }
+            );
+        } catch (error) {
+            console.error('Error actualizando meta:', error);
         }
     };
-
     // 📊 CALCULAR PRÓXIMOS VENCIMIENTOS
     const getProximosVencimientos = () => {
         const hoy = new Date();
