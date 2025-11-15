@@ -29,26 +29,6 @@ const COLECCION_PRINCIPAL = "datos_carrera";
 const UID_FIJO = "GeQyTcbhkZSjyX1aw2rjoZ06UoR2";
 const userUID = "GeQyTcbhkZSjyX1aw2rjoZ06UoR2";
 
-const checkDataStructure = async () => {
-    try {
-        // Prueba acceder directamente a las carreras del usuario
-        const carrerasRef = collection(db, "users", userUID, "carreras");
-        const querySnapshot = await getDocs(carrerasRef);
-
-        console.log("Número de carreras encontradas:", querySnapshot.size);
-
-        querySnapshot.forEach((doc) => {
-            console.log("Carrera:", doc.id, doc.data());
-        });
-
-        // Si no hay datos, verifica que el usuario exista
-        const userDoc = await getDoc(doc(db, "users", userUID));
-        console.log("Usuario existe:", userDoc.exists());
-
-    } catch (error) {
-        console.error("Error verificando datos:", error);
-    }
-}; console.log("🔍 DEBUG Info:");
 console.log("UID:", userUID);
 console.log("Firestore db:", db);
 const ESTADOS = {
@@ -91,8 +71,267 @@ const TIPOS_RECORDATORIO = {
     FINAL: 'Final',
     ENTREGA: 'Entrega',
     ESTUDIO: 'Sesión de Estudio'
+}; const cargarDatos = async () => {
+    try {
+        // Cargar materias desde el DOCUMENTO (no colección)
+        const unsubscribeMaterias = onSnapshot(
+            doc(db, "users", userUID, "materias"), // Cambio importante: doc en lugar de collection
+            (docSnapshot) => {
+                if (docSnapshot.exists()) {
+                    const data = docSnapshot.data();
+                    // Asumiendo que las materias están en un array dentro del documento
+                    const materiasData = data.materias || data.lista || [];
+                    setMaterias(materiasData);
+                    console.log("📚 Materias cargadas:", materiasData);
+                } else {
+                    console.log("No se encontró el documento de materias");
+                    setMaterias([]);
+                }
+            }
+        );
+
+        // Cargar exámenes desde el DOCUMENTO
+        const unsubscribeExamenes = onSnapshot(
+            doc(db, "users", userUID, "examenes"),
+            (docSnapshot) => {
+                if (docSnapshot.exists()) {
+                    const data = docSnapshot.data();
+                    const examenesData = data.examenes || data.lista || [];
+                    setPlanExamenes(examenesData);
+                } else {
+                    setPlanExamenes([]);
+                }
+            }
+        );
+
+        // Para recordatorios y metas, si no existen los documentos, los creamos vacíos
+        const unsubscribeRecordatorios = onSnapshot(
+            doc(db, "users", userUID, "recordatorios"),
+            (docSnapshot) => {
+                if (docSnapshot.exists()) {
+                    const data = docSnapshot.data();
+                    const recordatoriosData = data.recordatorios || data.lista || [];
+                    setRecordatorios(recordatoriosData);
+                } else {
+                    setRecordatorios([]);
+                }
+            }
+        );
+
+        const unsubscribeMetas = onSnapshot(
+            doc(db, "users", userUID, "metas"),
+            (docSnapshot) => {
+                if (docSnapshot.exists()) {
+                    const data = docSnapshot.data();
+                    const metasData = data.metas || data.lista || [];
+                    setMetas(metasData);
+                } else {
+                    setMetas([]);
+                }
+            }
+        );
+
+        setCargando(false);
+
+        return () => {
+            unsubscribeMaterias();
+            unsubscribeExamenes();
+            unsubscribeRecordatorios();
+            unsubscribeMetas();
+        };
+    } catch (error) {
+        console.error('Error cargando datos:', error);
+        setCargando(false);
+    }
 };
 
+// Y actualizamos TODAS las funciones de escritura:
+
+const agregarMateria = async () => {
+    if (nuevaMateria.nombre.trim()) {
+        const nuevaMateriaConId = {
+            ...nuevaMateria,
+            id: Date.now().toString(),
+            fechaCreacion: new Date().toISOString()
+        };
+
+        try {
+            // Primero, obtenemos el documento actual de materias
+            const materiasDocRef = doc(db, "users", userUID, "materias");
+            const materiasDoc = await getDoc(materiasDocRef);
+
+            let nuevasMaterias = [];
+            if (materiasDoc.exists()) {
+                const data = materiasDoc.data();
+                nuevasMaterias = data.materias || data.lista || [];
+            }
+
+            // Agregamos la nueva materia
+            nuevasMaterias.push(nuevaMateriaConId);
+
+            // Actualizamos el documento
+            await setDoc(materiasDocRef, {
+                materias: nuevasMaterias,
+                ultimaActualizacion: new Date().toISOString()
+            });
+
+            setNuevaMateria({
+                nombre: '',
+                anio: 1,
+                cuatrimestre: 1,
+                estado: ESTADOS.NO_CURSADA,
+                correlativas: [],
+                notaFinal: null,
+                notasParciales: []
+            });
+            setMostrandoFormulario(false);
+        } catch (error) {
+            console.error('Error agregando materia:', error);
+        }
+    }
+};
+
+const actualizarMateria = async (id, cambios) => {
+    try {
+        const materiasDocRef = doc(db, "users", userUID, "materias");
+        const materiasDoc = await getDoc(materiasDocRef);
+
+        if (materiasDoc.exists()) {
+            const data = materiasDoc.data();
+            let materiasData = data.materias || data.lista || [];
+
+            // Actualizamos la materia específica
+            materiasData = materiasData.map(materia =>
+                materia.id === id ? { ...materia, ...cambios } : materia
+            );
+
+            await setDoc(materiasDocRef, {
+                materias: materiasData,
+                ultimaActualizacion: new Date().toISOString()
+            });
+        }
+    } catch (error) {
+        console.error('Error actualizando materia:', error);
+    }
+};
+
+const eliminarMateria = async (id) => {
+    try {
+        const materiasDocRef = doc(db, "users", userUID, "materias");
+        const materiasDoc = await getDoc(materiasDocRef);
+
+        if (materiasDoc.exists()) {
+            const data = materiasDoc.data();
+            let materiasData = data.materias || data.lista || [];
+
+            // Filtramos la materia a eliminar
+            materiasData = materiasData.filter(materia => materia.id !== id);
+
+            await setDoc(materiasDocRef, {
+                materias: materiasData,
+                ultimaActualizacion: new Date().toISOString()
+            });
+
+            // También eliminamos los exámenes asociados
+            const examenesDocRef = doc(db, "users", userUID, "examenes");
+            const examenesDoc = await getDoc(examenesDocRef);
+
+            if (examenesDoc.exists()) {
+                const examenesData = examenesDoc.data().examenes || examenesDoc.data().lista || [];
+                const nuevosExamenes = examenesData.filter(examen => examen.materiaId !== id);
+                await setDoc(examenesDocRef, {
+                    examenes: nuevosExamenes,
+                    ultimaActualizacion: new Date().toISOString()
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error eliminando materia:', error);
+    }
+};
+
+// Hacer lo mismo para las demás funciones...
+
+const agregarExamen = async (materiaId, mesa) => {
+    const yaAgregado = planExamenes.find(p => p.materiaId === materiaId && p.mesa === mesa);
+    if (!yaAgregado) {
+        const nuevoExamen = {
+            id: Date.now().toString(),
+            materiaId,
+            mesa,
+            fechaMesa: FECHAS_MESAS[mesa]
+        };
+
+        try {
+            const examenesDocRef = doc(db, "users", userUID, "examenes");
+            const examenesDoc = await getDoc(examenesDocRef);
+
+            let nuevosExamenes = [];
+            if (examenesDoc.exists()) {
+                const data = examenesDoc.data();
+                nuevosExamenes = data.examenes || data.lista || [];
+            }
+
+            nuevosExamenes.push(nuevoExamen);
+
+            await setDoc(examenesDocRef, {
+                examenes: nuevosExamenes,
+                ultimaActualizacion: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Error agregando examen:', error);
+        }
+    }
+};
+
+const eliminarExamen = async (id) => {
+    try {
+        const examenesDocRef = doc(db, "users", userUID, "examenes");
+        const examenesDoc = await getDoc(examenesDocRef);
+
+        if (examenesDoc.exists()) {
+            const data = examenesDoc.data();
+            let examenesData = data.examenes || data.lista || [];
+
+            examenesData = examenesData.filter(examen => examen.id !== id);
+
+            await setDoc(examenesDocRef, {
+                examenes: examenesData,
+                ultimaActualizacion: new Date().toISOString()
+            });
+        }
+    } catch (error) {
+        console.error('Error eliminando examen:', error);
+    }
+};
+
+// Y funciones similares para recordatorios y metas...
+const debugEstructura = async () => {
+    try {
+        console.log("🔍 Debug de estructura Firestore:");
+
+        const materiasDoc = await getDoc(doc(db, "users", userUID, "materias"));
+        console.log("Documento 'materias':", materiasDoc.exists());
+        if (materiasDoc.exists()) {
+            console.log("Contenido:", materiasDoc.data());
+        }
+
+        const examenesDoc = await getDoc(doc(db, "users", userUID, "examenes"));
+        console.log("Documento 'examenes':", examenesDoc.exists());
+        if (examenesDoc.exists()) {
+            console.log("Contenido:", examenesDoc.data());
+        }
+
+    } catch (error) {
+        console.error("Error en debug:", error);
+    }
+};
+
+// Llama esta función después de cargarDatos
+useEffect(() => {
+    cargarDatos();
+    debugEstructura();
+}, []);
 export default function CarreraTracker() {
     const [debugInfo, setDebugInfo] = useState({
         version: '1.0.0',
