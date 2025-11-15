@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Plus, Edit2, Trash2, Save, X, Check, Calendar, BookOpen, User, LogOut,
+    Plus, Edit2, Trash2, Save, X, Check, Calendar, BookOpen, User,
     Clock, AlertCircle, Star, Target, TrendingUp, Award, BarChart3, CheckCircle,
-    Bell, Settings, Download, Upload, Trophy, Clock3, CalendarDays, ChevronLeft, ChevronRight, Edit3
+    Bell, Trophy, Clock3, CalendarDays, ChevronLeft, ChevronRight, Edit3
 } from 'lucide-react';
 
 // Firebase
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, onSnapshot, getDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
     apiKey: "AIzaSyCRBvf7gcn5xAbEeL90-M9umK1_FI0A_I4",
@@ -21,14 +20,12 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getFirestore(app);
-auth.tenantId = null;
 
-// FORZAR UID FIJO PARA USUARIOS ANÓNIMOS
-const UID_FIJO = "GeQyTcbhkZSjyX1aw2rjoZ06UoR2";
+// FORZAR UID FIJO
 const userUID = "GeQyTcbhkZSjyX1aw2rjoZ06UoR2";
 
+// Constantes
 const ESTADOS = {
     NO_CURSADA: 'No Cursada',
     CURSANDO: 'Cursando',
@@ -70,7 +67,7 @@ const TIPOS_RECORDATORIO = {
     ESTUDIO: 'Sesión de Estudio'
 };
 
-// 🆕 FUNCIÓN PARA OBTENER DATOS DE FIRESTORE
+// 🆕 FUNCIONES FIREBASE SIMPLIFICADAS
 const obtenerDatosFirestore = async (documento) => {
     try {
         const docRef = doc(db, "users", userUID, documento);
@@ -78,34 +75,26 @@ const obtenerDatosFirestore = async (documento) => {
 
         if (docSnap.exists()) {
             const data = docSnap.data();
-            console.log(`📄 Datos de ${documento}:`, data);
+            console.log(`📄 ${documento}:`, data);
 
-            // Buscar el array que contiene los datos (puede llamarse de diferentes formas)
+            // Buscar arrays con diferentes nombres
             if (data.materias) return data.materias;
             if (data.examenes) return data.examenes;
             if (data.recordatorios) return data.recordatorios;
             if (data.metas) return data.metas;
             if (data.lista) return data.lista;
 
-            // Si no encuentra arrays específicos, devolver el primer array que encuentre
-            for (const key in data) {
-                if (Array.isArray(data[key])) {
-                    return data[key];
-                }
-            }
-
             return [];
         } else {
-            console.log(`❌ Documento ${documento} no existe`);
+            console.log(`❌ ${documento} no existe`);
             return [];
         }
     } catch (error) {
-        console.error(`Error obteniendo ${documento}:`, error);
+        console.error(`Error en ${documento}:`, error);
         return [];
     }
 };
 
-// 🆕 FUNCIÓN PARA GUARDAR DATOS EN FIRESTORE
 const guardarDatosFirestore = async (documento, datos) => {
     try {
         const docRef = doc(db, "users", userUID, documento);
@@ -113,7 +102,7 @@ const guardarDatosFirestore = async (documento, datos) => {
             [documento]: datos,
             ultimaActualizacion: new Date().toISOString()
         });
-        console.log(`✅ Datos guardados en ${documento}`);
+        console.log(`✅ ${documento} guardado`);
         return true;
     } catch (error) {
         console.error(`Error guardando ${documento}:`, error);
@@ -121,93 +110,26 @@ const guardarDatosFirestore = async (documento, datos) => {
     }
 };
 
+// COMPONENTE PRINCIPAL SIMPLIFICADO
 export default function CarreraTracker() {
-    const [debugInfo, setDebugInfo] = useState({
-        version: '1.0.0',
-        lastUpdate: new Date().toISOString(),
-        firebaseConfig: 'CONFIGURADO',
-        buildId: `build-${Date.now()}`
-    });
-
     const [pestanaActiva, setPestanaActiva] = useState('materias');
     const [materias, setMaterias] = useState([]);
     const [planExamenes, setPlanExamenes] = useState([]);
     const [recordatorios, setRecordatorios] = useState([]);
     const [metas, setMetas] = useState([]);
-    const [editando, setEditando] = useState(null);
     const [nuevaMateria, setNuevaMateria] = useState({
-        nombre: '',
-        anio: 1,
-        cuatrimestre: 1,
-        estado: ESTADOS.NO_CURSADA,
-        correlativas: [],
-        notaFinal: null,
-        notasParciales: []
+        nombre: '', anio: 1, cuatrimestre: 1, estado: ESTADOS.NO_CURSADA,
+        correlativas: [], notaFinal: null, notasParciales: []
     });
     const [mostrandoFormulario, setMostrandoFormulario] = useState(false);
     const [cargando, setCargando] = useState(true);
 
-    // 🆕 FUNCIONES AUXILIARES
-    const puedeCursar = (materia) => {
-        if (materia.estado !== ESTADOS.NO_CURSADA) return false;
-        if (materia.correlativas.length === 0) return true;
-
-        return materia.correlativas.every(corrId => {
-            const correlativa = materias.find(m => m.id === corrId);
-            return correlativa && (correlativa.estado === ESTADOS.REGULAR || correlativa.estado === ESTADOS.PROMOCION);
-        });
-    };
-
-    const calcularPromedioMateria = (materia) => {
-        if (!materia.notasParciales || materia.notasParciales.length === 0) return null;
-        const suma = materia.notasParciales.reduce((acc, curr) => acc + curr.nota, 0);
-        return (suma / materia.notasParciales.length).toFixed(2);
-    };
-
-    const getEstadisticas = () => {
-        const total = materias.length;
-        const promocionadas = materias.filter(m => m.estado === ESTADOS.PROMOCION).length;
-        const regulares = materias.filter(m => m.estado === ESTADOS.REGULAR).length;
-        const cursando = materias.filter(m => m.estado === ESTADOS.CURSANDO).length;
-        const libres = materias.filter(m => m.estado === ESTADOS.LIBRE).length;
-        const noCursadas = materias.filter(m => m.estado === ESTADOS.NO_CURSADA).length;
-        const disponibles = materias.filter(m => puedeCursar(m)).length;
-
-        const porcentajeCompletado = total > 0 ? ((promocionadas + regulares) / total * 100).toFixed(1) : 0;
-
-        const calcularPromedioGeneral = () => {
-            const materiasConNota = materias.filter(m => m.notaFinal !== null && m.notaFinal !== undefined);
-            if (materiasConNota.length === 0) return null;
-            const suma = materiasConNota.reduce((acc, materia) => acc + materia.notaFinal, 0);
-            return (suma / materiasConNota.length).toFixed(2);
-        };
-
-        const promedioGeneral = calcularPromedioGeneral();
-
-        return {
-            total,
-            promocionadas,
-            regulares,
-            cursando,
-            libres,
-            noCursadas,
-            disponibles,
-            porcentajeCompletado,
-            promedioGeneral
-        };
-    };
-
-    // 🆕 CARGAR DATOS DESDE FIRESTORE
+    // 🆕 CARGAR DATOS
     const cargarDatos = async () => {
         try {
-            console.log("🔄 Cargando datos desde Firestore...");
+            console.log("🔄 Cargando datos...");
 
-            const [
-                materiasData,
-                examenesData,
-                recordatoriosData,
-                metasData
-            ] = await Promise.all([
+            const [materiasData, examenesData, recordatoriosData, metasData] = await Promise.all([
                 obtenerDatosFirestore("materias"),
                 obtenerDatosFirestore("examenes"),
                 obtenerDatosFirestore("recordatorios"),
@@ -218,22 +140,23 @@ export default function CarreraTracker() {
             setPlanExamenes(examenesData);
             setRecordatorios(recordatoriosData);
             setMetas(metasData);
+            setCargando(false);
 
             console.log("✅ Datos cargados:", {
                 materias: materiasData.length,
-                examenes: examenesData.length,
-                recordatorios: recordatoriosData.length,
-                metas: metasData.length
+                examenes: examenesData.length
             });
-
-            setCargando(false);
         } catch (error) {
             console.error('❌ Error cargando datos:', error);
             setCargando(false);
         }
     };
 
-    // 🆕 FUNCIONES CRUD PARA MATERIAS
+    useEffect(() => {
+        cargarDatos();
+    }, []);
+
+    // 🆕 FUNCIONES CRUD BÁSICAS
     const agregarMateria = async () => {
         if (nuevaMateria.nombre.trim()) {
             const nuevaMateriaConId = {
@@ -248,13 +171,8 @@ export default function CarreraTracker() {
             if (exito) {
                 setMaterias(nuevasMaterias);
                 setNuevaMateria({
-                    nombre: '',
-                    anio: 1,
-                    cuatrimestre: 1,
-                    estado: ESTADOS.NO_CURSADA,
-                    correlativas: [],
-                    notaFinal: null,
-                    notasParciales: []
+                    nombre: '', anio: 1, cuatrimestre: 1, estado: ESTADOS.NO_CURSADA,
+                    correlativas: [], notaFinal: null, notasParciales: []
                 });
                 setMostrandoFormulario(false);
             }
@@ -267,9 +185,7 @@ export default function CarreraTracker() {
         );
 
         const exito = await guardarDatosFirestore("materias", nuevasMaterias);
-        if (exito) {
-            setMaterias(nuevasMaterias);
-        }
+        if (exito) setMaterias(nuevasMaterias);
     };
 
     const eliminarMateria = async (id) => {
@@ -278,7 +194,6 @@ export default function CarreraTracker() {
 
         if (exito) {
             setMaterias(nuevasMaterias);
-
             // Eliminar exámenes relacionados
             const nuevosExamenes = planExamenes.filter(p => p.materiaId !== id);
             await guardarDatosFirestore("examenes", nuevosExamenes);
@@ -286,154 +201,92 @@ export default function CarreraTracker() {
         }
     };
 
-    const agregarNotaParcial = async (materiaId, nota) => {
-        if (nota >= 0 && nota <= 10) {
-            const materia = materias.find(m => m.id === materiaId);
-            const nuevasNotas = [...(materia.notasParciales || []), {
-                nota,
-                fecha: new Date().toISOString(),
-                id: Date.now().toString()
-            }];
-
-            await actualizarMateria(materiaId, {
-                notasParciales: nuevasNotas,
-                estado: ESTADOS.CURSANDO
-            });
-        }
-    };
-
-    // 🆕 FUNCIONES CRUD PARA EXÁMENES
     const agregarExamen = async (materiaId, mesa) => {
         const yaAgregado = planExamenes.find(p => p.materiaId === materiaId && p.mesa === mesa);
         if (!yaAgregado) {
             const nuevoExamen = {
                 id: Date.now().toString(),
-                materiaId,
-                mesa,
-                fechaMesa: FECHAS_MESAS[mesa]
+                materiaId, mesa, fechaMesa: FECHAS_MESAS[mesa]
             };
 
             const nuevosExamenes = [...planExamenes, nuevoExamen];
             const exito = await guardarDatosFirestore("examenes", nuevosExamenes);
-
-            if (exito) {
-                setPlanExamenes(nuevosExamenes);
-            }
+            if (exito) setPlanExamenes(nuevosExamenes);
         }
     };
 
     const eliminarExamen = async (id) => {
         const nuevosExamenes = planExamenes.filter(p => p.id !== id);
         const exito = await guardarDatosFirestore("examenes", nuevosExamenes);
+        if (exito) setPlanExamenes(nuevosExamenes);
+    };
 
-        if (exito) {
-            setPlanExamenes(nuevosExamenes);
+    // 🆕 FUNCIONES AUXILIARES
+    const puedeCursar = (materia) => {
+        if (materia.estado !== ESTADOS.NO_CURSADA) return false;
+        if (materia.correlativas.length === 0) return true;
+        return materia.correlativas.every(corrId => {
+            const correlativa = materias.find(m => m.id === corrId);
+            return correlativa && (correlativa.estado === ESTADOS.REGULAR || correlativa.estado === ESTADOS.PROMOCION);
+        });
+    };
+
+    const calcularPromedioMateria = (materia) => {
+        if (!materia.notasParciales || materia.notasParciales.length === 0) return null;
+        const suma = materia.notasParciales.reduce((acc, curr) => acc + curr.nota, 0);
+        return (suma / materia.notasParciales.length).toFixed(2);
+    };
+
+    const agregarNotaParcial = async (materiaId, nota) => {
+        if (nota >= 0 && nota <= 10) {
+            const materia = materias.find(m => m.id === materiaId);
+            const nuevasNotas = [...(materia.notasParciales || []), {
+                nota, fecha: new Date().toISOString(), id: Date.now().toString()
+            }];
+            await actualizarMateria(materiaId, { notasParciales: nuevasNotas, estado: ESTADOS.CURSANDO });
         }
     };
 
     const marcarComoPromovida = async (materiaId, examenId, nota = null) => {
-        await actualizarMateria(materiaId, {
-            estado: ESTADOS.PROMOCION,
-            notaFinal: nota
-        });
+        await actualizarMateria(materiaId, { estado: ESTADOS.PROMOCION, notaFinal: nota });
         await eliminarExamen(examenId);
     };
 
-    // 🆕 FUNCIONES CRUD PARA RECORDATORIOS
-    const agregarRecordatorio = async (recordatorio) => {
-        const nuevoRecordatorio = {
-            id: Date.now().toString(),
-            ...recordatorio,
-            completado: false,
-            fechaCreacion: new Date().toISOString()
-        };
+    // 🆕 ESTADÍSTICAS
+    const getEstadisticas = () => {
+        const total = materias.length;
+        const promocionadas = materias.filter(m => m.estado === ESTADOS.PROMOCION).length;
+        const regulares = materias.filter(m => m.estado === ESTADOS.REGULAR).length;
+        const cursando = materias.filter(m => m.estado === ESTADOS.CURSANDO).length;
+        const libres = materias.filter(m => m.estado === ESTADOS.LIBRE).length;
+        const noCursadas = materias.filter(m => m.estado === ESTADOS.NO_CURSADA).length;
+        const disponibles = materias.filter(m => puedeCursar(m)).length;
 
-        const nuevosRecordatorios = [...recordatorios, nuevoRecordatorio];
-        const exito = await guardarDatosFirestore("recordatorios", nuevosRecordatorios);
+        const porcentajeCompletado = total > 0 ? ((promocionadas + regulares) / total * 100).toFixed(1) : 0;
 
-        if (exito) {
-            setRecordatorios(nuevosRecordatorios);
-        }
+        const materiasConNota = materias.filter(m => m.notaFinal !== null && m.notaFinal !== undefined);
+        const promedioGeneral = materiasConNota.length > 0
+            ? (materiasConNota.reduce((acc, m) => acc + m.notaFinal, 0) / materiasConNota.length).toFixed(2)
+            : null;
+
+        return { total, promocionadas, regulares, cursando, libres, noCursadas, disponibles, porcentajeCompletado, promedioGeneral };
     };
 
-    const eliminarRecordatorio = async (id) => {
-        const nuevosRecordatorios = recordatorios.filter(r => r.id !== id);
-        const exito = await guardarDatosFirestore("recordatorios", nuevosRecordatorios);
-
-        if (exito) {
-            setRecordatorios(nuevosRecordatorios);
-        }
-    };
-
-    const toggleRecordatorioCompletado = async (id, completado) => {
-        const nuevosRecordatorios = recordatorios.map(r =>
-            r.id === id ? { ...r, completado } : r
-        );
-
-        const exito = await guardarDatosFirestore("recordatorios", nuevosRecordatorios);
-        if (exito) {
-            setRecordatorios(nuevosRecordatorios);
-        }
-    };
-
-    // 🆕 FUNCIONES CRUD PARA METAS
-    const agregarMeta = async (meta) => {
-        const nuevaMeta = {
-            id: Date.now().toString(),
-            ...meta,
-            completada: false,
-            fechaCreacion: new Date().toISOString()
-        };
-
-        const nuevasMetas = [...metas, nuevaMeta];
-        const exito = await guardarDatosFirestore("metas", nuevasMetas);
-
-        if (exito) {
-            setMetas(nuevasMetas);
-        }
-    };
-
-    const toggleMetaCompletada = async (id, completada) => {
-        const nuevasMetas = metas.map(m =>
-            m.id === id ? { ...m, completada } : m
-        );
-
-        const exito = await guardarDatosFirestore("metas", nuevasMetas);
-        if (exito) {
-            setMetas(nuevasMetas);
-        }
-    };
-
-    // 🆕 FUNCIONES AUXILIARES DE UI
-    const getProximosVencimientos = () => {
-        const hoy = new Date();
-        const recordatoriosProximos = recordatorios
-            .filter(r => !r.completado && new Date(r.fecha) >= hoy)
-            .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
-            .slice(0, 5);
-
-        return recordatoriosProximos;
-    };
-
-    // EFFECTS
-    useEffect(() => {
-        cargarDatos();
-    }, []);
-
-    // CALCULOS
+    // 🆕 CALCULOS PARA UI
     const stats = getEstadisticas();
     const materiasParaExamen = materias.filter(m =>
         m.estado === ESTADOS.REGULAR || m.estado === ESTADOS.LIBRE || m.estado === ESTADOS.CURSANDO
     );
-    const proximosVencimientos = getProximosVencimientos();
 
-    // DEBUG
-    console.log('🔍 Estado actual:', {
-        materias: materias.length,
-        examenes: planExamenes.length,
-        recordatorios: recordatorios.length,
-        metas: metas.length
-    });
+    const getProximosVencimientos = () => {
+        const hoy = new Date();
+        return recordatorios
+            .filter(r => !r.completado && new Date(r.fecha) >= hoy)
+            .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
+            .slice(0, 5);
+    };
+
+    const proximosVencimientos = getProximosVencimientos();
 
     if (cargando) {
         return (
@@ -452,9 +305,7 @@ export default function CarreraTracker() {
                 {/* Header */}
                 <div className="bg-white rounded-lg shadow-lg p-4 mb-4 flex justify-between items-center">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-800 mb-1">
-                            Visualizador de Progreso Académico
-                        </h1>
+                        <h1 className="text-2xl font-bold text-gray-800 mb-1">Visualizador de Progreso Académico</h1>
                         <p className="text-sm text-gray-600">Gestiona tu avance y planifica tus exámenes</p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -465,7 +316,7 @@ export default function CarreraTracker() {
                     </div>
                 </div>
 
-                {/* Barra de progreso principal */}
+                {/* Barra de progreso */}
                 <div className="bg-white rounded-lg shadow-lg p-4 mb-4">
                     <div className="flex items-center justify-between mb-2">
                         <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -473,83 +324,67 @@ export default function CarreraTracker() {
                             Progreso General: {stats.porcentajeCompletado}%
                         </h3>
                         {stats.promedioGeneral && (
-                            <span className="text-sm font-medium text-gray-600">
-                                Promedio: {stats.promedioGeneral}
-                            </span>
+                            <span className="text-sm font-medium text-gray-600">Promedio: {stats.promedioGeneral}</span>
                         )}
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-4">
-                        <div
-                            className="bg-green-500 h-4 rounded-full transition-all duration-500"
-                            style={{ width: `${stats.porcentajeCompletado}%` }}
-                        ></div>
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-600 mt-1">
-                        <span>0%</span>
-                        <span>100%</span>
+                        <div className="bg-green-500 h-4 rounded-full transition-all duration-500" style={{ width: `${stats.porcentajeCompletado}%` }}></div>
                     </div>
                 </div>
 
                 {/* Próximos vencimientos */}
                 {proximosVencimientos.length > 0 && (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
-                        <h4 className="font-bold text-orange-800 mb-2 flex items-center gap-2">
-                            <Bell size={16} />
-                            Próximos Vencimientos
-                        </h4>
+                        <h4 className="font-bold text-orange-800 mb-2 flex items-center gap-2"><Bell size={16} />Próximos Vencimientos</h4>
                         <div className="space-y-1">
                             {proximosVencimientos.map(recordatorio => (
                                 <div key={recordatorio.id} className="flex justify-between items-center text-sm">
                                     <span>{recordatorio.titulo}</span>
-                                    <span className="text-orange-600 font-medium">
-                                        {new Date(recordatorio.fecha).toLocaleDateString()}
-                                    </span>
+                                    <span className="text-orange-600 font-medium">{new Date(recordatorio.fecha).toLocaleDateString()}</span>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
 
-                {/* Pestañas y contenido... (mantener el resto del JSX igual) */}
+                {/* Pestañas */}
                 <div className="flex gap-2 mb-4 flex-wrap">
-                    <button
-                        onClick={() => setPestanaActiva('materias')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${pestanaActiva === 'materias'
-                            ? 'bg-indigo-600 text-white shadow-lg'
-                            : 'bg-white text-gray-700 hover:bg-gray-100'
-                            }`}
-                    >
-                        <BookOpen size={18} />
-                        Materias
-                    </button>
-                    <button
-                        onClick={() => setPestanaActiva('examenes')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${pestanaActiva === 'examenes'
-                            ? 'bg-indigo-600 text-white shadow-lg'
-                            : 'bg-white text-gray-700 hover:bg-gray-100'
-                            }`}
-                    >
-                        <Calendar size={18} />
-                        Mesas de Exámenes
-                    </button>
-                    {/* ... resto de pestañas */}
+                    {['materias', 'examenes', 'estadisticas', 'planificacion'].map(pestana => (
+                        <button key={pestana} onClick={() => setPestanaActiva(pestana)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${pestanaActiva === pestana ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-100'
+                                }`}>
+                            {pestana === 'materias' && <BookOpen size={18} />}
+                            {pestana === 'examenes' && <Calendar size={18} />}
+                            {pestana === 'estadisticas' && <BarChart3 size={18} />}
+                            {pestana === 'planificacion' && <CalendarDays size={18} />}
+                            {pestana === 'materias' ? 'Materias' :
+                                pestana === 'examenes' ? 'Mesas de Exámenes' :
+                                    pestana === 'estadisticas' ? 'Estadísticas' : 'Planificación'}
+                        </button>
+                    ))}
                 </div>
 
-                {/* Estadísticas */}
+                {/* Estadísticas rápidas */}
                 <div className="grid grid-cols-3 md:grid-cols-8 gap-2 mb-4">
-                    <div className="bg-white rounded-lg shadow p-2">
-                        <div className="text-xl font-bold text-gray-800">{stats.total}</div>
-                        <div className="text-xs text-gray-600">Total</div>
-                    </div>
-                    <div className="bg-green-50 rounded-lg shadow p-2">
-                        <div className="text-xl font-bold text-green-700">{stats.promocionadas}</div>
-                        <div className="text-xs text-green-600">Promoción</div>
-                    </div>
-                    {/* ... resto de estadísticas */}
+                    {[
+                        { valor: stats.total, label: 'Total', color: 'gray' },
+                        { valor: stats.promocionadas, label: 'Promoción', color: 'green' },
+                        { valor: stats.regulares, label: 'Regulares', color: 'yellow' },
+                        { valor: stats.cursando, label: 'Cursando', color: 'blue' },
+                        { valor: stats.libres, label: 'Libres', color: 'red' },
+                        { valor: stats.noCursadas, label: 'No Cursadas', color: 'gray' },
+                        { valor: stats.disponibles, label: 'Disponibles', color: 'purple' },
+                        { valor: `${stats.porcentajeCompletado}%`, label: 'Completado', color: 'orange' }
+                    ].map((stat, index) => (
+                        <div key={index} className={`bg-${stat.color}-50 rounded-lg shadow p-2`}>
+                            <div className={`text-xl font-bold text-${stat.color}-700`}>{stat.valor}</div>
+                            <div className={`text-xs text-${stat.color}-600`}>{stat.label}</div>
+                        </div>
+                    ))}
                 </div>
 
                 {/* Contenido según pestaña */}
-                {pestanaActiva === 'materias' ? (
+                {pestanaActiva === 'materias' && (
                     <VistaMaterias
                         materias={materias}
                         mostrandoFormulario={mostrandoFormulario}
@@ -563,7 +398,9 @@ export default function CarreraTracker() {
                         agregarNotaParcial={agregarNotaParcial}
                         calcularPromedioMateria={calcularPromedioMateria}
                     />
-                ) : pestanaActiva === 'examenes' ? (
+                )}
+
+                {pestanaActiva === 'examenes' && (
                     <VistaMesasExamenes
                         materias={materias}
                         materiasParaExamen={materiasParaExamen}
@@ -573,27 +410,23 @@ export default function CarreraTracker() {
                         actualizarMateria={actualizarMateria}
                         marcarComoPromovida={marcarComoPromovida}
                     />
-                ) : pestanaActiva === 'estadisticas' ? (
-                    <VistaEstadisticas
-                        stats={stats}
-                        materias={materias}
-                    />
-                ) : (
-                    <VistaPlanificacion
-                        materias={materias}
-                        recordatorios={recordatorios}
-                        metas={metas}
-                        agregarRecordatorio={agregarRecordatorio}
-                        eliminarRecordatorio={eliminarRecordatorio}
-                        toggleRecordatorioCompletado={toggleRecordatorioCompletado}
-                        agregarMeta={agregarMeta}
-                        toggleMetaCompletada={toggleMetaCompletada}
-                    />
+                )}
+
+                {pestanaActiva === 'estadisticas' && (
+                    <VistaEstadisticas stats={stats} materias={materias} />
+                )}
+
+                {pestanaActiva === 'planificacion' && (
+                    <div className="bg-white rounded-lg shadow-lg p-4 text-center">
+                        <h3 className="text-lg font-bold mb-2">Planificación - Próximamente</h3>
+                        <p className="text-gray-600">Esta funcionalidad estará disponible pronto</p>
+                    </div>
                 )}
             </div>
         </div>
     );
 }
+
 
 // AGREGÁ ESTE COMPONENTE ANTES de VistaMaterias
 function MateriaCard({
