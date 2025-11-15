@@ -86,7 +86,95 @@ export default function CarreraTracker() {
         console.log('📊 Colección:', COLECCION_PRINCIPAL);
         console.log('🔄 Componente montado - VERSION ACTUALIZADA');
         console.log('========================');
+        const getEstadisticas = () => {
+            const total = materias.length;
+            const promocionadas = materias.filter(m => m.estado === ESTADOS.PROMOCION).length;
+            const regulares = materias.filter(m => m.estado === ESTADOS.REGULAR).length;
+            const cursando = materias.filter(m => m.estado === ESTADOS.CURSANDO).length;
+            const libres = materias.filter(m => m.estado === ESTADOS.LIBRE).length;
+            const noCursadas = materias.filter(m => m.estado === ESTADOS.NO_CURSADA).length;
 
+            // 🆕 AGREGAR LA FUNCIÓN puedeCursar QUE TAMBIÉN FALTA
+            const puedeCursar = (materia) => {
+                if (materia.estado !== ESTADOS.NO_CURSADA) return false;
+                if (materia.correlativas.length === 0) return true;
+
+                return materia.correlativas.every(corrId => {
+                    const correlativa = materias.find(m => m.id === corrId);
+                    return correlativa && (correlativa.estado === ESTADOS.REGULAR || correlativa.estado === ESTADOS.PROMOCION);
+                });
+            };
+
+            const disponibles = materias.filter(m => puedeCursar(m)).length;
+
+            const porcentajeCompletado = total > 0 ? ((promocionadas + regulares) / total * 100).toFixed(1) : 0;
+
+            // 🆕 AGREGAR calcularPromedioGeneral QUE TAMBIÉN FALTA
+            const calcularPromedioGeneral = () => {
+                const materiasConNota = materias.filter(m => m.notaFinal !== null && m.notaFinal !== undefined);
+                if (materiasConNota.length === 0) return null;
+
+                const suma = materiasConNota.reduce((acc, materia) => acc + materia.notaFinal, 0);
+                return (suma / materiasConNota.length).toFixed(2);
+            };
+
+            const promedioGeneral = calcularPromedioGeneral();
+
+            return {
+                total,
+                promocionadas,
+                regulares,
+                cursando,
+                libres,
+                noCursadas,
+                disponibles,
+                porcentajeCompletado,
+                promedioGeneral
+            };
+        };
+
+        // 🆕 AGREGA ESTA FUNCIÓN TAMBIÉN
+        const puedeCursar = (materia) => {
+            if (materia.estado !== ESTADOS.NO_CURSADA) return false;
+            if (materia.correlativas.length === 0) return true;
+
+            return materia.correlativas.every(corrId => {
+                const correlativa = materias.find(m => m.id === corrId);
+                return correlativa && (correlativa.estado === ESTADOS.REGULAR || correlativa.estado === ESTADOS.PROMOCION);
+            });
+        };
+
+        // 🆕 AGREGA ESTA FUNCIÓN TAMBIÉN
+        const agregarNotaParcial = async (materiaId, nota) => {
+            if (nota >= 0 && nota <= 10) {
+                const materia = materias.find(m => m.id === materiaId);
+                const nuevasNotas = [...(materia.notasParciales || []), {
+                    nota,
+                    fecha: new Date().toISOString(),
+                    id: Date.now().toString()
+                }];
+
+                await actualizarMateria(materiaId, {
+                    notasParciales: nuevasNotas,
+                    estado: ESTADOS.CURSANDO
+                });
+            }
+        };
+
+        // 🆕 AGREGA ESTA FUNCIÓN TAMBIÉN
+        const calcularPromedioMateria = (materia) => {
+            if (!materia.notasParciales || materia.notasParciales.length === 0) return null;
+            const suma = materia.notasParciales.reduce((acc, curr) => acc + curr.nota, 0);
+            return (suma / materia.notasParciales.length).toFixed(2);
+        };
+        // 🆕 AGREGA ESTA FUNCIÓN DESPUÉS DE eliminarExamen
+        const marcarComoPromovida = async (materiaId, examenId, nota = null) => {
+            await actualizarMateria(materiaId, {
+                estado: ESTADOS.PROMOCION,
+                notaFinal: nota
+            });
+            await eliminarExamen(examenId);
+        };
         // Verificar conexión a Firebase
         const verificarFirebase = async () => {
             try {
@@ -120,79 +208,7 @@ export default function CarreraTracker() {
     useEffect(() => {
         cargarDatos();
     }, []);
-    const puedeCursar = (materia) => {
-        if (materia.estado !== ESTADOS.NO_CURSADA) return false;
-        if (materia.correlativas.length === 0) return true;
 
-        return materia.correlativas.every(corrId => {
-            const correlativa = materias.find(m => m.id === corrId);
-            return correlativa && (correlativa.estado === ESTADOS.REGULAR || correlativa.estado === ESTADOS.PROMOCION);
-        });
-    };
-
-    const agregarNotaParcial = async (materiaId, nota) => {
-        if (nota >= 0 && nota <= 10) {
-            const materia = materias.find(m => m.id === materiaId);
-            const nuevasNotas = [...(materia.notasParciales || []), {
-                nota,
-                fecha: new Date().toISOString(),
-                id: Date.now().toString()
-            }];
-
-            await actualizarMateria(materiaId, {
-                notasParciales: nuevasNotas,
-                estado: ESTADOS.CURSANDO
-            });
-        }
-    };
-
-    const calcularPromedioMateria = (materia) => {
-        if (!materia.notasParciales || materia.notasParciales.length === 0) return null;
-        const suma = materia.notasParciales.reduce((acc, curr) => acc + curr.nota, 0);
-        return (suma / materia.notasParciales.length).toFixed(2);
-    };
-
-    const calcularPromedioGeneral = () => {
-        const materiasConNota = materias.filter(m => m.notaFinal !== null && m.notaFinal !== undefined);
-        if (materiasConNota.length === 0) return null;
-
-        const suma = materiasConNota.reduce((acc, materia) => acc + materia.notaFinal, 0);
-        return (suma / materiasConNota.length).toFixed(2);
-    };
-
-    // 🆕 FUNCIÓN GETESTADISTICAS QUE FALTABA
-    const getEstadisticas = () => {
-        const total = materias.length;
-        const promocionadas = materias.filter(m => m.estado === ESTADOS.PROMOCION).length;
-        const regulares = materias.filter(m => m.estado === ESTADOS.REGULAR).length;
-        const cursando = materias.filter(m => m.estado === ESTADOS.CURSANDO).length;
-        const libres = materias.filter(m => m.estado === ESTADOS.LIBRE).length;
-        const noCursadas = materias.filter(m => m.estado === ESTADOS.NO_CURSADA).length;
-        const disponibles = materias.filter(m => puedeCursar(m)).length;
-
-        const porcentajeCompletado = total > 0 ? ((promocionadas + regulares) / total * 100).toFixed(1) : 0;
-        const promedioGeneral = calcularPromedioGeneral();
-
-        return {
-            total,
-            promocionadas,
-            regulares,
-            cursando,
-            libres,
-            noCursadas,
-            disponibles,
-            porcentajeCompletado,
-            promedioGeneral
-        };
-    };
-
-    const marcarComoPromovida = async (materiaId, examenId, nota = null) => {
-        await actualizarMateria(materiaId, {
-            estado: ESTADOS.PROMOCION,
-            notaFinal: nota
-        });
-        await eliminarExamen(examenId);
-    };
     const cargarDatos = async () => {
         try {
             // Cargar materias
