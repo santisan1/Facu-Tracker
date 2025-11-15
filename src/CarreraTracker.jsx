@@ -27,8 +27,30 @@ auth.tenantId = null; // Agrega esta línea
 const COLECCION_PRINCIPAL = "datos_carrera";
 // FORZAR UID FIJO PARA USUARIOS ANÓNIMOS
 const UID_FIJO = "GeQyTcbhkZSjyX1aw2rjoZ06UoR2";
+const userUID = "GeQyTcbhkZSjyX1aw2rjoZ06UoR2";
 
+const checkDataStructure = async () => {
+    try {
+        // Prueba acceder directamente a las carreras del usuario
+        const carrerasRef = collection(db, "users", userUID, "carreras");
+        const querySnapshot = await getDocs(carrerasRef);
 
+        console.log("Número de carreras encontradas:", querySnapshot.size);
+
+        querySnapshot.forEach((doc) => {
+            console.log("Carrera:", doc.id, doc.data());
+        });
+
+        // Si no hay datos, verifica que el usuario exista
+        const userDoc = await getDoc(doc(db, "users", userUID));
+        console.log("Usuario existe:", userDoc.exists());
+
+    } catch (error) {
+        console.error("Error verificando datos:", error);
+    }
+}; console.log("🔍 DEBUG Info:");
+console.log("UID:", userUID);
+console.log("Firestore db:", db);
 const ESTADOS = {
     NO_CURSADA: 'No Cursada',
     CURSANDO: 'Cursando',
